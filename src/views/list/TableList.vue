@@ -4,277 +4,145 @@
       <a-form layout="inline">
         <a-row :gutter="48">
           <a-col :md="8" :sm="24">
-            <a-form-item label="规则编号">
-              <a-input v-model="queryParam.id" placeholder=""/>
+            <a-form-item label="部门 rowKey">
+              <a-input v-model="queryParam" placeholder="请输入部门的rowKey以查询此部门或者此部门的子部门"/>
             </a-form-item>
           </a-col>
           <a-col :md="8" :sm="24">
-            <a-form-item label="使用状态">
-              <a-select v-model="queryParam.status" placeholder="请选择" default-value="0">
-                <a-select-option value="0">全部</a-select-option>
-                <a-select-option value="1">关闭</a-select-option>
-                <a-select-option value="2">运行中</a-select-option>
-              </a-select>
-            </a-form-item>
+            <a-button @click="getDepartmentByRowKey" type="primary" icon="search">
+              搜索部门
+            </a-button>
+            <a-button @click="getAllSubDepartments" icon="search" style="margin-left: 20px">
+              搜索子部门
+            </a-button>
           </a-col>
-          <template v-if="advanced">
-            <a-col :md="8" :sm="24">
-              <a-form-item label="调用次数">
-                <a-input-number v-model="queryParam.callNo" style="width: 100%"/>
-              </a-form-item>
-            </a-col>
-            <a-col :md="8" :sm="24">
-              <a-form-item label="更新日期">
-                <a-date-picker v-model="queryParam.date" style="width: 100%" placeholder="请输入更新日期"/>
-              </a-form-item>
-            </a-col>
-            <a-col :md="8" :sm="24">
-              <a-form-item label="使用状态">
-                <a-select v-model="queryParam.useStatus" placeholder="请选择" default-value="0">
-                  <a-select-option value="0">全部</a-select-option>
-                  <a-select-option value="1">关闭</a-select-option>
-                  <a-select-option value="2">运行中</a-select-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-            <a-col :md="8" :sm="24">
-              <a-form-item label="使用状态">
-                <a-select placeholder="请选择" default-value="0">
-                  <a-select-option value="0">全部</a-select-option>
-                  <a-select-option value="1">关闭</a-select-option>
-                  <a-select-option value="2">运行中</a-select-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-          </template>
-          <a-col :md="!advanced && 8 || 24" :sm="24">
-            <span class="table-page-search-submitButtons" :style="advanced && { float: 'right', overflow: 'hidden' } || {} ">
-              <a-button type="primary" @click="$refs.table.refresh(true)">查询</a-button>
-              <a-button style="margin-left: 8px" @click="() => queryParam = {}">重置</a-button>
-              <a @click="toggleAdvanced" style="margin-left: 8px">
-                {{ advanced ? '收起' : '展开' }}
-                <a-icon :type="advanced ? 'up' : 'down'"/>
-              </a>
-            </span>
+          <a-col :md="8" :sm="24">
+            <a-button @click="getAllDepartments" type="primary">
+              获得全部部门
+            </a-button>
           </a-col>
         </a-row>
       </a-form>
     </div>
-
-    <div class="table-operator">
-      <a-button type="primary" icon="plus" @click="$refs.createModal.add()">新建</a-button>
-      <a-button type="dashed" @click="tableOption">{{ optionAlertShow && '关闭' || '开启' }} alert</a-button>
-      <a-dropdown v-action:edit v-if="selectedRowKeys.length > 0">
-        <a-menu slot="overlay">
-          <a-menu-item key="1"><a-icon type="delete" />删除</a-menu-item>
-          <!-- lock | unlock -->
-          <a-menu-item key="2"><a-icon type="lock" />锁定</a-menu-item>
-        </a-menu>
-        <a-button style="margin-left: 8px">
-          批量操作 <a-icon type="down" />
-        </a-button>
-      </a-dropdown>
-    </div>
-
-    <s-table
-      ref="table"
-      size="default"
-      rowKey="key"
-      :columns="columns"
-      :data="loadData"
-      :alert="options.alert"
-      :rowSelection="options.rowSelection"
-      showPagination="auto"
-    >
-      <span slot="serial" slot-scope="text, record, index">
-        {{ index + 1 }}
-      </span>
-      <span slot="status" slot-scope="text">
-        <a-badge :status="text | statusTypeFilter" :text="text | statusFilter" />
-      </span>
-      <span slot="description" slot-scope="text">
-        <ellipsis :length="4" tooltip>{{ text }}</ellipsis>
-      </span>
-
-      <span slot="action" slot-scope="text, record">
-        <template>
-          <a @click="handleEdit(record)">配置</a>
-          <a-divider type="vertical" />
-          <a @click="handleSub(record)">订阅报警</a>
-        </template>
-      </span>
-    </s-table>
-    <create-form ref="createModal" @ok="handleOk" />
-    <step-by-step-modal ref="modal" @ok="handleOk"/>
+    <a-card>
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :loading="loading"
+        rowKey="rowKey"
+      >
+        <a slot="name" slot-scope="text">{{ text }}</a>
+        <span slot="action" slot-scope="text, record">
+          <a>查看详情</a>
+        </span>
+      </a-table>
+    </a-card>
   </a-card>
 </template>
 
 <script>
-import moment from 'moment'
-import { STable, Ellipsis } from '@/components'
-import StepByStepModal from './modules/StepByStepModal'
-import CreateForm from './modules/CreateForm'
-import { getRoleList, getServiceList } from '@/api/manage'
+  import { getAllDept, getDeptByRowKey, getSubDeptByRowKey } from '@/api/hbaseApi'
 
-const statusMap = {
-  0: {
-    status: 'default',
-    text: '关闭'
-  },
-  1: {
-    status: 'processing',
-    text: '运行中'
-  },
-  2: {
-    status: 'success',
-    text: '已上线'
-  },
-  3: {
-    status: 'error',
-    text: '异常'
-  }
-}
-
-export default {
-  name: 'TableList',
-  components: {
-    STable,
-    Ellipsis,
-    CreateForm,
-    StepByStepModal
-  },
-  data () {
-    return {
-      mdl: {},
-      // 高级搜索 展开/关闭
-      advanced: false,
-      // 查询参数
-      queryParam: {},
-      // 表头
-      columns: [
-        {
-          title: '#',
-          scopedSlots: { customRender: 'serial' }
-        },
-        {
-          title: '规则编号',
-          dataIndex: 'no'
-        },
-        {
-          title: '描述',
-          dataIndex: 'description',
-          scopedSlots: { customRender: 'description' }
-        },
-        {
-          title: '服务调用次数',
-          dataIndex: 'callNo',
-          sorter: true,
-          needTotal: true,
-          customRender: (text) => text + ' 次'
-        },
-        {
-          title: '状态',
-          dataIndex: 'status',
-          scopedSlots: { customRender: 'status' }
-        },
-        {
-          title: '更新时间',
-          dataIndex: 'updatedAt',
-          sorter: true
-        },
-        {
-          title: '操作',
-          dataIndex: 'action',
-          width: '150px',
-          scopedSlots: { customRender: 'action' }
-        }
-      ],
-      // 加载数据方法 必须为 Promise 对象
-      loadData: parameter => {
-        console.log('loadData.parameter', parameter)
-        return getServiceList(Object.assign(parameter, this.queryParam))
-          .then(res => {
-            return res.result
-          })
-      },
-      selectedRowKeys: [],
-      selectedRows: [],
-
-      // custom table alert & rowSelection
-      options: {
-        alert: { show: true, clear: () => { this.selectedRowKeys = [] } },
-        rowSelection: {
-          selectedRowKeys: this.selectedRowKeys,
-          onChange: this.onSelectChange
-        }
-      },
-      optionAlertShow: false
-    }
-  },
-  filters: {
-    statusFilter (type) {
-      return statusMap[type].text
+  export default {
+    name: 'TableList',
+    components: {},
+    data() {
+      return {
+        //查询的内容
+        queryParam: '',
+        // 表头
+        columns: [
+          {
+            title: 'rowKey',
+            dataIndex: 'rowKey'
+          },
+          {
+            title: '部门名称',
+            dataIndex: 'dept'
+          },
+          {
+            title: '父部门',
+            dataIndex: 'f_pid',
+            customRender: (text) => text || '暂无父部门'
+          },
+          {
+            title: '子部门数量',
+            dataIndex: 'subDept',
+            customRender: (text) => text.length > 0 ? text.length + ' 个' : '暂无子部门'
+          }
+        ],
+        data: [],
+        allData: [],
+        loading: false
+      }
     },
-    statusTypeFilter (type) {
-      return statusMap[type].status
-    }
-  },
-  created () {
-    this.tableOption()
-    getRoleList({ t: new Date() })
-  },
-  methods: {
-    tableOption () {
-      if (!this.optionAlertShow) {
-        this.options = {
-          alert: { show: true, clear: () => { this.selectedRowKeys = [] } },
-          rowSelection: {
-            selectedRowKeys: this.selectedRowKeys,
-            onChange: this.onSelectChange,
-            getCheckboxProps: record => ({
-              props: {
-                disabled: record.no === 'No 2', // Column configuration not to be checked
-                name: record.no
-              }
+    beforeMount() {
+      this.getAllDepartments()
+    },
+    methods: {
+      /**
+       * 获得全部的部门
+       */
+      getAllDepartments() {
+        this.queryParam = ''
+        if (!this.allData.length)
+          getAllDept().then(res => {
+            const { data } = res
+            let newData = []
+            for (let item of data) {
+              newData.push({
+                rowKey: item.rowKey,
+                dept: item.base_name,
+                f_pid: item.base_f_pid,
+                subDept: item.subDept
+              })
+            }
+            this.allData = newData
+            this.data = this.allData
+          })
+        else
+          this.data = this.allData
+      },
+      /**
+       * 根据rowkey获得部门
+       */
+      getDepartmentByRowKey() {
+        getDeptByRowKey({
+          rowKey: this.queryParam
+        }).then(res => {
+          const { data } = res
+          this.data = []
+          if (data) {
+            this.data.push({
+              rowKey: data.rowKey,
+              dept: data.base_name,
+              f_pid: data.base_f_pid,
+              subDept: data.subDept
             })
           }
-        }
-        this.optionAlertShow = true
-      } else {
-        this.options = {
-          alert: false,
-          rowSelection: null
-        }
-        this.optionAlertShow = false
-      }
-    },
-
-    handleEdit (record) {
-      console.log(record)
-      this.$refs.modal.edit(record)
-    },
-    handleSub (record) {
-      if (record.status !== 0) {
-        this.$message.info(`${record.no} 订阅成功`)
-      } else {
-        this.$message.error(`${record.no} 订阅失败，规则已关闭`)
-      }
-    },
-    handleOk () {
-      this.$refs.table.refresh()
-    },
-    onSelectChange (selectedRowKeys, selectedRows) {
-      this.selectedRowKeys = selectedRowKeys
-      this.selectedRows = selectedRows
-    },
-    toggleAdvanced () {
-      this.advanced = !this.advanced
-    },
-    resetSearchForm () {
-      this.queryParam = {
-        date: moment(new Date())
+        })
+      },
+      /**
+       * 获得子部门
+       */
+      getAllSubDepartments() {
+        getSubDeptByRowKey({
+          rowKey: this.queryParam
+        }).then(res => {
+          const { data } = res
+          let newData = []
+          if (data)
+            for (let item of data) {
+              newData.push({
+                rowKey: item.rowKey,
+                dept: item.base_name,
+                f_pid: item.base_f_pid,
+                subDept: item.subDept
+              })
+            }
+          this.data = newData
+        })
       }
     }
   }
-}
 </script>

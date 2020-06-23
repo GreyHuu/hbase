@@ -47,15 +47,6 @@
       ...mapGetters(['nickname', 'avatar'])
     },
     mounted() {
-      getCurrentUser().then(e => {
-        this.avatarValue = e.data.nick_name;
-      })
-      const getNameInterval = setInterval(() => {
-        getCurrentUser().then(e => {
-          this.avatarValue = e.data.nick_name;
-        })
-      }, 10000);
-      Vue.ls.set(GET_NAME_INTERVAL, getNameInterval, 7 * 24 * 60 * 60 * 1000);
     },
     data() {
       return {
